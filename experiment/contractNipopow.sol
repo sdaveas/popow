@@ -24,6 +24,7 @@ contract Crosschain {
         address payable author;
         uint256 expire;
         Nipopow proof;
+        bytes32 proofHash;
     }
 
     // The key is the key value used for the predicate. In our case
@@ -345,38 +346,53 @@ contract Crosschain {
         return predicate(proof, hashHeader(blockOfInterest));
     }
 
-    // TODO: Deleting a mapping is impossible without knowing
-    // beforehand all the keys of the mapping. That costs gas
-    // and it may be in our favor to never delete this stored memory.
+    function hashProof(bytes32[4][] memory headers)
+        public
+        payable
+        returns (bytes32)
+    {
+        return sha256(abi.encodePacked(headers));
+    }
+
     function submitEventProof(
         bytes32[4][] memory headers,
         bytes32[] memory siblings,
-        bytes32[4] memory blockOfInterest
+        uint256 blockOfInterestIndex
     ) public payable returns (bool) {
-        bytes32 hashedBlock = hashHeader(blockOfInterest);
+        require(msg.value >= z, "insufficient collateral");
+        require(
+            headers.length > blockOfInterestIndex && blockOfInterestIndex >= 0,
+            "Block of interest index out of range"
+        );
 
-        if (msg.value < z) {
-            return false;
+        bytes32 hashedBlock = hashHeader(headers[blockOfInterestIndex]);
+        require(
+            events[hashedBlock].expire == 0,
+            "The submission period has expired"
+        );
+        require(
+            events[hashedBlock].proofHash == 0,
+            "A proof with this evens exists"
+        );
+        require(
+            hashHeader(headers[headers.length - 1]) == genesisBlockHash,
+            "Proof does not include the genesis block"
+        );
+
+        // Is there any prettier way to do this?
+        bytes32[] memory hashedHeaders = new bytes32[](headers.length);
+        for (uint256 i = 0; i < headers.length; i++) {
+            hashedHeaders[i] = hashHeader(headers[i]);
         }
 
-        // No proof for that event for the moment.
-        if (
-            events[hashedBlock].expire == 0 &&
-            events[hashedBlock].proof.bestProof.length == 0 &&
-            verify(
-                events[hashedBlock].proof,
-                headers,
-                siblings,
-                blockOfInterest
-            )
-        ) {
-            events[hashedBlock].expire = block.number + k;
-            events[hashedBlock].author = msg.sender;
+        // Throws on failure
+        validateInterlink(headers, hashedHeaders, siblings);
 
-            return true;
-        }
+        events[hashedBlock].proofHash = hashProof(headers);
+        events[hashedBlock].expire = block.number + k;
+        events[hashedBlock].author = msg.sender;
 
-        return false;
+        return true;
     }
 
     function finalizeEvent(bytes32[4] memory blockOfInterest)
