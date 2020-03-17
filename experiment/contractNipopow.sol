@@ -193,7 +193,7 @@ contract Crosschain {
         bytes32 leaf,
         uint8 mu,
         bytes32[] memory siblings
-    ) internal pure {
+    ) internal pure returns(bool) {
         bytes32 h = leaf;
         for (uint256 i = 0; i < siblings.length; i++) {
             uint8 bit = mu & 0x1;
@@ -222,7 +222,7 @@ contract Crosschain {
             }
             mu >>= 1;
         }
-        require(h == roothash, "Merkle verification failed");
+        return h == roothash;
     }
 
     // shift bits to the most segnificant byte (256-8 = 248)
@@ -235,7 +235,7 @@ contract Crosschain {
         bytes32[4][] memory headers,
         bytes32[] memory hashedHeaders,
         bytes32[] memory siblings
-    ) internal pure {
+    ) internal pure returns(bool) {
         uint256 ptr = 0; // Index of the current sibling
         for (uint256 i = 1; i < headers.length; i++) {
             // hold the 3rd and 4th least significant bytes
@@ -256,13 +256,16 @@ contract Crosschain {
             ptr += branchLength;
 
             // Verify the merkle tree proof
-            verifyMerkle(
+            if (!verifyMerkle(
                 headers[i - 1][0],
                 hashedHeaders[i],
                 merkleIndex,
                 reversedSiblings
-            );
+            )){
+                return false;
+            }
         }
+        return true;
     }
 
     // Genesis is the last element of headers at index headers[headers.length-1].
@@ -385,8 +388,10 @@ contract Crosschain {
             hashedHeaders[i] = hashHeader(headers[i]);
         }
 
-        // Throws on failure
-        validateInterlink(headers, hashedHeaders, siblings);
+        require(
+            validateInterlink(headers, hashedHeaders, siblings),
+            "Merkle verification failed"
+        );
 
         events[hashedBlock].proofHash = hashProof(headers);
         events[hashedBlock].expire = block.number + k;
