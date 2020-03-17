@@ -233,6 +233,17 @@ contract Crosschain {
 
     function validateInterlink(
         bytes32[4][] memory headers,
+        bytes32[] memory siblings
+    ) internal pure returns (bool) {
+        bytes32[] memory hashedHeaders = new bytes32[](headers.length);
+        for (uint256 i = 0; i < headers.length; i++) {
+            hashedHeaders[i] = hashHeader(headers[i]);
+        }
+        return validateInterlink(headers, hashedHeaders, siblings);
+    }
+
+    function validateInterlink(
+        bytes32[4][] memory headers,
         bytes32[] memory hashedHeaders,
         bytes32[] memory siblings
     ) internal pure returns(bool) {
@@ -381,15 +392,8 @@ contract Crosschain {
             hashHeader(headers[headers.length - 1]) == genesisBlockHash,
             "Proof does not include the genesis block"
         );
-
-        // Is there any prettier way to do this?
-        bytes32[] memory hashedHeaders = new bytes32[](headers.length);
-        for (uint256 i = 0; i < headers.length; i++) {
-            hashedHeaders[i] = hashHeader(headers[i]);
-        }
-
         require(
-            validateInterlink(headers, hashedHeaders, siblings),
+            validateInterlink(headers, siblings),
             "Merkle verification failed"
         );
 
